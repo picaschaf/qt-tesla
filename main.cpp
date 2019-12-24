@@ -1,7 +1,9 @@
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
+#include <QtCore/QDebug>
 
 #include "Tesla.hxx"
+#include "Vehicle.hxx"
 #include "Credentials.hxx"
 
 
@@ -12,21 +14,20 @@ int main(int argc, char *argv[])
     QGuiApplication app(argc, argv);
 
     auto account = new Tesla { USERNAME, PASSWORD };
-    account->authenticate();
 
-/*
-    auto request2 = QNetworkRequest(QString("%1/vehicles").arg(apiUrl));
-    request2.setRawHeader("Authorization", QString("Bearer %1").arg(token).toLatin1());
+    QObject::connect(
+        account,
+        &Tesla::vehiclesChanged,
+        [=](const QVector<Vehicle*> vehicles) {
+            for (auto vehicle : vehicles) {
+                qDebug() << vehicle->vin() << vehicle->name();
+            }
+        });
 
-    auto response2 = qnam.get(request2);
-    while (!response2->isFinished())
-    {
-        qApp->processEvents();
-    }
-    auto name = QJsonDocument::fromJson(response2->readAll()).toVariant().toMap()["response"].toList().first().toMap()["display_name"].toString();
-    qDebug() << name;
-*/
-    QQmlApplicationEngine engine;
+    account->requestVehicles();
+
+
+    /*QQmlApplicationEngine engine;
     const QUrl url(QStringLiteral("qrc:/main.qml"));
     QObject::connect(&engine, &QQmlApplicationEngine::objectCreated,
                      &app, [url](QObject *obj, const QUrl &objUrl) {
@@ -34,6 +35,6 @@ int main(int argc, char *argv[])
             QCoreApplication::exit(-1);
     }, Qt::QueuedConnection);
     engine.load(url);
-
+    */
     return app.exec();
 }

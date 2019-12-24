@@ -31,10 +31,14 @@ public:
 
     QNetworkAccessManager qnam;
 
+    QVector<Vehicle*> vehicles;
+
     TeslaPrivate(Tesla* parent);
 
     QByteArray tokenRequestData() const;
     bool isAuthenticated() const;
+
+    void updateVehicle(const QVariantMap& data);
 
 private:
     Tesla* q_ptr = nullptr;
@@ -74,6 +78,41 @@ QByteArray TeslaPrivate::tokenRequestData() const
 bool TeslaPrivate::isAuthenticated() const
 {
     return !token.isEmpty() && QDateTime::currentDateTime() < tokenExpiration;
+}
+
+void TeslaPrivate::updateVehicle(const QVariantMap& data)
+{
+    Q_Q(Tesla);
+
+    auto updateHelper =
+        [](Vehicle* vehicle, const QVariantMap& data) {
+            vehicle->setApiVersion(data["api_version"].toString());
+            vehicle->setName(data["display_name"].toString());
+            vehicle->setCalendarEnabled(data["calendar_enabled"].toBool());
+            vehicle->setId(data["id"].toLongLong());
+            vehicle->setIds(data["id_s"].toString());
+            vehicle->setInService(data["in_service"].toBool());
+            vehicle->setOptions(data["option_codes"].toString().split(","));
+            vehicle->setStatus(data["status"].toString());
+            vehicle->setTokens(data["tokens"].toStringList());
+            vehicle->setVehicleId(data["vehicle_id"].toUInt());
+        };
+
+    for (int i = 0; i < vehicles.count(); i++) {
+        if (vehicles.at(i)->vin() == data["vin"].toString()) {
+            updateHelper(vehicles.at(i), data);
+            emit q->vehiclesChanged(vehicles);
+
+            return;
+        }
+    }
+
+    auto vehicle = new Vehicle { data["vin"].toString(), q };
+    updateHelper(vehicle, data);
+
+    vehicles << vehicle;
+
+    emit q->vehiclesChanged(vehicles);
 }
 
 
@@ -118,7 +157,7 @@ QString Tesla::token() const
 
 void Tesla::requestVehicles()
 {
-    Q_D(const Tesla);
+    Q_D(Tesla);
 
     // Prevent looping from any previous authentications.
     QObject::disconnect(this,
@@ -139,9 +178,34 @@ void Tesla::requestVehicles()
         Q_ASSERT(isConnected);
 
         authenticate();
+        return;
     }
 
-    qDebug() << "Requesting vehicles.";
+    auto request = QNetworkRequest { QString("%1/vehicles").arg(d->apiUrl) };
+    request.setRawHeader("Authorization",
+                         QString("Bearer %1").arg(d->token).toLatin1());
+
+    auto reply = d->qnam.get(request);
+    bool isConnected = false;
+    Q_UNUSED(isConnected);
+
+    isConnected = QObject::connect(
+        reply,
+        &QNetworkReply::finished,
+        [=]() {
+            auto rawData = reply->readAll();
+            auto vehicleData = QJsonDocument::fromJson(rawData)
+                .toVariant()
+                .toMap()["response"]
+                .toList();
+
+            for (auto vehicle : vehicleData)
+                d->updateVehicle(vehicle.toMap());
+
+            reply->deleteLater();
+            //emit vehiclesChanged(d->vehicles);
+        });
+    Q_ASSERT(isConnected);
 }
 
 void Tesla::setUsername(const QString& username)
@@ -190,7 +254,7 @@ void Tesla::authenticate()
         [=]() {
             auto replyData = QJsonDocument::fromJson(reply->readAll());
             auto tokenData = replyData.toVariant().toMap();
-            d->token = tokenData["access_token"].toString();
+            setToken(tokenData["access_token"].toString());
             d->refreshToken = tokenData["refresh_token"].toString();
             d->tokenExpiration = QDateTime::fromTime_t(
                 tokenData["created_at"].toUInt()

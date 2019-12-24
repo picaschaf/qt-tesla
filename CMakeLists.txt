@@ -14,10 +14,12 @@ set(SOURCES
   main.cpp
   qml.qrc
   Tesla.cxx
+  Vehicle.cxx
   )
 
 set(HEADERS
   Tesla.hxx
+  Vehicle.hxx
   )
 
 add_executable(${PROJECT_NAME} ${SOURCES} ${HEADERS})

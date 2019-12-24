@@ -37,14 +37,14 @@ public:
     QString password() const;
     QString token() const;
 
-    void requestVehicles();
-
 public slots:
     void setUsername(const QString& username);
     void setPassword(const QString& password);
     void setToken(const QString& token);
 
     void authenticate();
+
+    void requestVehicles();
 
 signals:
     void usernameChanged(const QString& username);
