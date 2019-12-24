@@ -26,12 +26,15 @@ public:
     QString username;
     QString password;
     QString token;
-
-    bool isAuthenticated = false;
+    QString refreshToken;
+    QDateTime tokenExpiration;
 
     QNetworkAccessManager qnam;
 
     TeslaPrivate(Tesla* parent);
+
+    QByteArray tokenRequestData() const;
+    bool isAuthenticated() const;
 
 private:
     Tesla* q_ptr = nullptr;
@@ -44,6 +47,33 @@ TeslaPrivate::TeslaPrivate(Tesla* parent)
     : QObject(parent)
     , q_ptr(parent)
 {
+}
+
+QByteArray TeslaPrivate::tokenRequestData() const
+{
+    QVariantMap tokenRequest;
+
+    if (!token.isEmpty() && QDateTime::currentDateTime() >= tokenExpiration) {
+        tokenRequest["grant_type"] = "refresh_token";
+        tokenRequest["refresh_token"] = refreshToken;
+    }
+    else if (!username.isEmpty() && !password.isEmpty()) {
+        tokenRequest["grant_type"] = "password";
+        tokenRequest["email"] = username;
+        tokenRequest["password"] = password;
+    }
+    else
+        return QByteArray();
+
+    tokenRequest["client_id"] = clientId;
+    tokenRequest["client_secret"] = clientSecret;
+
+    return QJsonDocument::fromVariant(tokenRequest).toJson();
+}
+
+bool TeslaPrivate::isAuthenticated() const
+{
+    return !token.isEmpty() && QDateTime::currentDateTime() < tokenExpiration;
 }
 
 
@@ -96,7 +126,7 @@ void Tesla::requestVehicles()
                         this,
                         SLOT(requestVehicles()));
 
-    if (!d->isAuthenticated) {
+    if (!d->isAuthenticated()) {
         bool isConnected = false;
         Q_UNUSED(isConnected);
 
@@ -137,30 +167,37 @@ void Tesla::setToken(const QString& token)
     d->token = token;
     emit tokenChanged(d->token);
 }
-#include <QGuiApplication>
-//! \todo Implement token authentication
+
 void Tesla::authenticate()
 {
     Q_D(Tesla);
 
-    QVariantMap tokenRequest;
-    tokenRequest["grant_type"] = "password";
-    tokenRequest["client_id"] = d->clientId;
-    tokenRequest["client_secret"] = d->clientSecret;
-    tokenRequest["email"] = d->username;
-    tokenRequest["password"] = d->password;
+    auto data = d->tokenRequestData();
+    if (data.isEmpty())
+        return;
 
     auto request = QNetworkRequest { d->tokenUrl };
     request.setHeader(QNetworkRequest::ContentTypeHeader,
                       "application/json");
 
-    auto data = QJsonDocument::fromVariant(tokenRequest).toJson();
     auto reply = d->qnam.post(request, data);
-    while (!reply->isFinished())
-    {
-        qApp->processEvents();
-    }
+    bool isConnected = false;
+    Q_UNUSED(isConnected);
 
-    QString token = QJsonDocument::fromJson(reply->readAll()).toVariant().toMap()["access_token"].toString();
-    qDebug() << token;
+    isConnected = QObject::connect(
+        reply,
+        &QNetworkReply::finished,
+        [=]() {
+            auto replyData = QJsonDocument::fromJson(reply->readAll());
+            auto tokenData = replyData.toVariant().toMap();
+            d->token = tokenData["access_token"].toString();
+            d->refreshToken = tokenData["refresh_token"].toString();
+            d->tokenExpiration = QDateTime::fromTime_t(
+                tokenData["created_at"].toUInt()
+                + tokenData["expires_in"].toUInt());
+
+            reply->deleteLater();
+            emit authenticated();
+        });
+    Q_ASSERT(isConnected);
 }

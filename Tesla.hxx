@@ -52,7 +52,7 @@ signals:
     void tokenChanged(const QString& token);
 
     void authenticated();
-    void error();
+    void error() const;
 
     void vehiclesChanged(const QVector<Vehicle*> vehicles);
 
