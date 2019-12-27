@@ -4,9 +4,18 @@
 #include <QtCore/QObject>
 #include <QtCore/QVector>
 
+#include <functional>
+
 class TeslaPrivate;
 
 class Vehicle;
+
+
+enum class RequestType {
+    Unknown,
+    Get,
+    Post
+};
 
 
 class Tesla : public QObject
@@ -46,6 +55,10 @@ public slots:
 
     void requestVehicles();
 
+    void request(const QString& request,
+                 const QByteArray& data,
+                 RequestType type,
+                 std::function<void(QString)> callback);
 signals:
     void usernameChanged(const QString& username);
     void passwordChanged(const QString& password);

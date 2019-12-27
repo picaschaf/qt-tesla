@@ -89,7 +89,8 @@ void TeslaPrivate::updateVehicle(const QVariantMap& data)
             vehicle->setApiVersion(data["api_version"].toString());
             vehicle->setName(data["display_name"].toString());
             vehicle->setCalendarEnabled(data["calendar_enabled"].toBool());
-            vehicle->setId(data["id"].toLongLong());
+            // Dafuq ... raw is ok, converted is 1 off
+            vehicle->setId(data["id"].toULongLong() + 1);
             vehicle->setIds(data["id_s"].toString());
             vehicle->setInService(data["in_service"].toBool());
             vehicle->setOptions(data["option_codes"].toString().split(","));
@@ -159,23 +160,16 @@ void Tesla::requestVehicles()
 {
     Q_D(Tesla);
 
-    // Prevent looping from any previous authentications.
-    QObject::disconnect(this,
-                        SIGNAL(authenticated()),
-                        this,
-                        SLOT(requestVehicles()));
-
     if (!d->isAuthenticated()) {
-        bool isConnected = false;
-        Q_UNUSED(isConnected);
-
         // Try again after authentication.
-        isConnected = QObject::connect(
+        auto connection = std::make_shared<QMetaObject::Connection>();
+        *connection = QObject::connect(
             this,
-            SIGNAL(authenticated()),
-            this,
-            SLOT(requestVehicles()));
-        Q_ASSERT(isConnected);
+            &Tesla::authenticated,
+            [this, connection]() {
+                QObject::disconnect(*connection);
+                requestVehicles();
+            });
 
         authenticate();
         return;
@@ -206,6 +200,55 @@ void Tesla::requestVehicles()
             //emit vehiclesChanged(d->vehicles);
         });
     Q_ASSERT(isConnected);
+}
+
+void Tesla::request(const QString& request,
+                    const QByteArray& data,
+                    RequestType type,
+                    std::function<void(QString)> callback)
+{
+    Q_D(Tesla);
+
+    if (!d->isAuthenticated()) {
+        // Try again after authentication.
+        auto connection = std::make_shared<QMetaObject::Connection>();
+        *connection = QObject::connect(
+            this,
+            &Tesla::authenticated,
+            [this, request, data, type, callback, connection]() {
+                QObject::disconnect(*connection);
+                this->request(request, data, type, callback);
+            });
+
+        authenticate();
+        return;
+    }
+
+    auto req = QNetworkRequest {
+        QString { "%1/%2" }.arg(d->apiUrl).arg(request) };
+    qDebug() << req.url();
+    req.setRawHeader("Authorization",
+                     QString { "Bearer %1" }.arg(d->token).toLatin1());
+
+    QNetworkReply* reply = nullptr;
+    if (type == RequestType::Get)
+        reply = d->qnam.get(req);
+    else if (type == RequestType::Post) {
+        req.setHeader(QNetworkRequest::ContentTypeHeader,
+                      "application/json");
+        reply = d->qnam.post(req, data);
+    }
+    else {
+        qCritical() << "Unknown request type.";
+        return;
+    }
+
+    QObject::connect(reply,
+                     &QNetworkReply::finished,
+                     [=]() {
+                         callback(QString(reply->readAll()));
+                         reply->deleteLater();
+                     });
 }
 
 void Tesla::setUsername(const QString& username)

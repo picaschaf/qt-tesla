@@ -5,6 +5,8 @@
 
 class VehiclePrivate;
 
+class Tesla;
+
 
 class Vehicle : public QObject
 {
@@ -13,7 +15,7 @@ class Vehicle : public QObject
     Q_DISABLE_COPY(Vehicle)
 
 public:
-    Vehicle(const QString& vin, QObject* parent = nullptr);
+    Vehicle(const QString& vin, Tesla* parent = nullptr);
 
     QString vin() const;
     QString apiVersion() const;
@@ -38,6 +40,24 @@ public slots:
     void setStatus(const QString& status);
     void setTokens(const QStringList& tokens);
     void setVehicleId(quint32 id);
+
+    void wake();
+
+    void unlockDoors();
+    void lockDoors();
+
+    void honkHorn();
+
+    void flashLights();
+
+    void startHVAC();
+    void stopHVAC();
+
+    void setTemperature(float driver, float passenger);
+
+    void setChargeLimit(int percent);
+    void setMaxChargeLimit();
+    void setDefaultChargeLimit();
 
 signals:
     void apiVersionChanged(const QString& version);
