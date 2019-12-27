@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.1)
 
-project(QTesla LANGUAGES CXX)
+project(list-vehicles LANGUAGES CXX)
 
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 set(CMAKE_AUTOMOC ON)
@@ -10,22 +10,11 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 find_package(Qt5 COMPONENTS Core Quick REQUIRED)
 
-set(SOURCES
-  main.cxx
-  ../../src/Tesla.cxx
-  ../../src/Vehicle.cxx
-  )
-
-set(HEADERS
-  ../../include/Tesla
-  ../../include/Vehicle
-  )
-
 add_definitions(-DUSERNAME="${USERNAME}")
 add_definitions(-DPASSWORD="${PASSWORD}")
 
-include_directories(../../include)
-add_executable(${PROJECT_NAME} ${SOURCES} ${HEADERS})
+add_executable(${PROJECT_NAME} main.cxx)
+target_link_libraries(${PROJECT_NAME} PRIVATE TeslaApi)
 
 target_compile_definitions(${PROJECT_NAME}
   PRIVATE $<$<OR:$<CONFIG:Debug>,$<CONFIG:RelWithDebInfo>>:QT_QML_DEBUG>)
